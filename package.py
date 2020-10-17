@@ -1,4 +1,3 @@
-import base64
 import collections
 import glob
 import json
@@ -16,22 +15,20 @@ from sublime_plugin import (
     WindowCommand,
 )
 
-from threading import Thread
-
 from .src import selectors
 from .src import sexp
 from .src import forms
-from .src import formatter
 from .src import indent
 from .src import inline
 from .src import paredit
 from .src import namespace
 from .src import test
+from .src.repl import handshake
 from .src.repl import info
 from .src.repl import history
 from .src.repl import tap
 from .src.repl.client import Client
-from .src.repl.session import Session
+
 
 from .src.log import log, start_logging, stop_logging
 
@@ -126,20 +123,6 @@ def plugin_unloaded():
 
     preferences = sublime.load_settings("Preferences.sublime-settings")
     preferences.clear_on_change("Tutkain")
-
-
-def print_characters(view, characters):
-    if characters is not None:
-        view.run_command("append", {"characters": characters, "scroll_to_end": True})
-
-
-def append_to_view(view, characters):
-    if view and characters:
-        view.set_read_only(False)
-        print_characters(view, characters)
-        view.set_read_only(True)
-        view.run_command("move_to", {"to": "eof"})
-
 
 def get_active_repl_view(window):
     return state.get("active_repl_view").get(window.id())
@@ -436,169 +419,6 @@ class TutkainEvaluateInputCommand(WindowCommand):
 
 
 class TutkainConnectCommand(WindowCommand):
-    def handle_sideloader_provide_response(self, session, response):
-        if "status" in response and "unexpected-provide" in response["status"]:
-            name = response["name"]
-            session.output({"err": f"unexpected provide: {name}"})
-
-    def sideloader_provide(self, session, response):
-        if "name" in response:
-            name = response["name"]
-
-            op = {
-                "id": response["id"],
-                "op": "sideloader-provide",
-                "type": response["type"],
-                "name": name,
-            }
-
-            path = os.path.join(sublime.packages_path(), "tutkain/clojure/src", name)
-
-            if os.path.isfile(path):
-                log.debug({"event": "sideloader/provide", "path": path})
-
-                with open(path, "rb") as file:
-                    op["content"] = base64.b64encode(file.read()).decode("utf-8")
-            else:
-                op["content"] = ""
-
-            session.send(
-                op,
-                handler=lambda response: self.handle_sideloader_provide_response(
-                    session, response
-                ),
-            )
-
-    def create_sessions(self, client, sideloader, view, response):
-        if response.get("status") == ["done"]:
-            info = response
-            sideloader.info = info
-            sideloader.output(response)
-
-            def create_session(owner, response):
-                if response.get("status") == ["done"]:
-                    new_session_id = response["new-session"]
-                    new_session = Session(new_session_id, client, view)
-                    new_session.info = info
-                    client.register_session(owner, new_session)
-
-            sideloader.send(
-                {"op": "clone", "session": sideloader.id},
-                handler=lambda response: create_session("plugin", response),
-            )
-
-            sideloader.send(
-                {"op": "clone", "session": sideloader.id},
-                handler=lambda response: create_session("user", response),
-            )
-
-    def initialize(self, client, sideloader, view):
-        def add_tap(response):
-            if response.get("status") == ["done"]:
-
-                def handler(response):
-                    if response.get("status") == ["done"]:
-                        sideloader.send(
-                            {"op": "describe"},
-                            handler=lambda response: self.create_sessions(
-                                client, sideloader, view, response
-                            ),
-                        )
-
-                sideloader.send({"op": "tutkain/add-tap"}, handler=handler)
-
-        def add_middleware(response):
-            if response.get("status") == ["done"]:
-                sideloader.send(
-                    {
-                        "op": "add-middleware",
-                        "middleware": [
-                            "tutkain.nrepl.middleware.test/wrap-test",
-                            "tutkain.nrepl.middleware.tap/wrap-tap",
-                        ],
-                    },
-                    handler=add_tap,
-                )
-
-        sideloader.send(
-            {"op": "sideloader-start"},
-            handler=lambda response: self.sideloader_provide(sideloader, response),
-        )
-
-        sideloader.send(
-            {"op": "eval", "code": """(require 'tutkain.nrepl.util.pprint)"""},
-            pprint=False,
-            handler=add_middleware,
-        )
-
-    def print(self, view, item):
-        if view:
-            if {
-                "value",
-                "nrepl.middleware.caught/throwable",
-                "in",
-                "versions",
-                "summary",
-            } & item.keys():
-                append_to_view(view, formatter.format(item))
-            elif "status" in item and "interrupted" in item["status"]:
-                append_to_view(view, ":tutkain/interrupted\n")
-            elif "status" in item and "session-idle" in item["status"]:
-                append_to_view(view, ":tutkain/nothing-to-interrupt\n")
-            else:
-                characters = formatter.format(item)
-
-                if characters:
-                    append_to_view(view, characters)
-
-                    size = view.size()
-                    key = str(uuid.uuid4())
-                    regions = [sublime.Region(size - len(characters), size)]
-                    scope = (
-                        "tutkain.repl.stderr"
-                        if "err" in item
-                        else "tutkain.repl.stdout"
-                    )
-
-                    view.add_regions(
-                        key, regions, scope=scope, flags=sublime.DRAW_NO_OUTLINE
-                    )
-
-    def print_loop(self, client):
-        try:
-            while True:
-                item = client.recvq.get()
-
-                if item is None:
-                    break
-
-                log.debug({"event": "printer/recv", "data": item})
-
-                session = client.sessions.get(item.get("session"))
-
-                if "tap" in item and settings().get("tap_panel"):
-                    tap.show_panel(self.window, client)
-                    append_to_view(tap.find_panel(self.window, client), item["tap"])
-                elif session:
-                    self.print(session.view, item)
-
-                    view_size = session.view.size()
-                    last_char = session.view.substr(
-                        sublime.Region(view_size - 1, view_size)
-                    )
-
-                    if (
-                        "status" in item
-                        and "done" in item["status"]
-                        and not (last_char == "\n")
-                    ):
-                        append_to_view(session.view, "\n")
-                else:
-                    view = get_active_repl_view(self.window)
-                    self.print(view, item)
-        finally:
-            log.debug({"event": "thread/exit"})
-
     def set_layout(self):
         # Set up a two-row layout.
         #
@@ -659,59 +479,13 @@ class TutkainConnectCommand(WindowCommand):
             panel.settings().set("scroll_past_end", False)
             panel.assign_syntax("Clojure (Tutkain).sublime-syntax")
 
-    def clone_handler(self, client, view, capabilities, response):
-        if "done" in response.get("status", []):
-            session_id = response.get("new-session")
-            session = Session(session_id, client, view)
-
-            # Start a worker thread that reads items from a queue and prints
-            # them into an output panel.
-            print_loop = Thread(daemon=True, target=self.print_loop, args=(client,))
-
-            print_loop.name = "tutkain.print_loop"
-            print_loop.start()
-
-            if "sideloader-start" in capabilities["ops"]:
-                client.register_session("sideloader", session)
-                self.initialize(client, session, view)
-            else:
-                # Babashka
-                client.register_session("plugin", session)
-                session.info = capabilities
-                session.output(capabilities)
-
-                def handler(response):
-                    if response.get("status") == ["done"]:
-                        session = Session(response["new-session"], client, view)
-                        session.info = capabilities
-                        client.register_session("user", session)
-
-                client.send({"op": "clone"}, handler=handler)
-
-    def clone(self, client, view, response):
-        if response.get("status") == ["done"]:
-            capabilities = response
-
-            client.send(
-                {"op": "clone"},
-                handler=lambda response: self.clone_handler(
-                    client, view, capabilities, response
-                ),
-            )
-
-    def describe(self, client, view):
-        client.send(
-            {"op": "describe"},
-            handler=lambda response: self.clone(client, view, response),
-        )
-
     def run(self, host, port):
         try:
             client = Client(host, int(port), queue.Queue(), queue.Queue()).go()
             self.create_tap_panel(client)
             view = self.create_output_view(host, port)
             state["client_by_view"][view.id()] = client
-            self.describe(client, view)
+            handshake.initiate(client, view)
         except ConnectionRefusedError:
             self.window.status_message(f"ERR: connection to {host}:{port} refused.")
 

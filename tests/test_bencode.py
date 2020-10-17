@@ -27,7 +27,7 @@ def start_server(stop_event):
         ),
     )
 
-    serve_loop.name = "tutkain.test.serve_loop"
+    serve_loop.name = "tutkain.test_bencode.serve_loop"
     serve_loop.start()
     return server
 

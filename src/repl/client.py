@@ -94,7 +94,11 @@ class Client(object):
         if session:
             session.handle(response)
         else:
-            self.handlers.get(id, self.recvq.put)(response)
+            try:
+                handler = self.handlers.get(id, self.recvq.put)
+                handler.__call__(response)
+            finally:
+                self.handlers.pop(id, None)
 
     def send_disconnect_notification(self):
         session = self.sessions_by_owner.get("plugin")
@@ -127,21 +131,27 @@ class Client(object):
             # close the connection to the socket.
             self.disconnect()
 
+    def close_session(self, owner, handler=lambda _: None):
+        sessions = self.sessions_by_owner
+
+        if sessions and owner in sessions:
+            session = sessions[owner]
+
+            if session.supports("close"):
+                session.send({"op": "close"}, handler=handler)
+
     def halt(self):
         log.debug({"event": "client/halt"})
 
-        def handler(response):
-            if "status" in response and "done" in response["status"]:
-                self.stop_event.set()
+        if self.sessions_by_owner:
+            self.close_session("user")
+            self.close_session("plugin")
 
-        sessions = self.sessions_by_owner
-
-        if sessions:
-            "user" in sessions and sessions["user"].send({"op": "close"})
-            "plugin" in sessions and sessions["plugin"].send({"op": "close"})
-
-            "sideloader" in sessions and sessions["sideloader"].send(
-                {"op": "close"}, handler=handler
+            self.close_session(
+                "sideloader",
+                handler=lambda response: "status" in response
+                and "done" in response["status"]
+                and self.stop_event.set(),
             )
         else:
             self.stop_event.set()

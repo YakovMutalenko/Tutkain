@@ -4,6 +4,7 @@ import sublime
 
 from threading import Thread
 from .session import Session
+from . import formatter
 from . import printer
 from ..log import log
 
@@ -107,16 +108,17 @@ def sideload(client, session, view):
     )
 
 
-def initialize_sessions(client, view, capabilities, response):
+def initialize_sessions(client, printq, view, capabilities, response):
     session_id = response.get("new-session")
     session = Session(session_id, client, view)
 
-    # Start a worker thread that reads items from a queue and prints
-    # them into an output panel.
-    print_loop = Thread(daemon=True, target=printer.print_loop, args=(client,))
-
+    print_loop = Thread(daemon=True, target=printer.print_loop, args=(printq,))
     print_loop.name = "tutkain.print_loop"
     print_loop.start()
+
+    format_loop = Thread(daemon=True, target=formatter.format_loop, args=(view.window(), client, printq,))
+    format_loop.name = "tutkain.format_loop"
+    format_loop.start()
 
     if "sideloader-start" in capabilities["ops"]:
         client.register_session("sideloader", session)
@@ -137,18 +139,18 @@ def initialize_sessions(client, view, capabilities, response):
         )
 
 
-def clone(client, view, response):
+def clone(client, printq, view, response):
     capabilities = response
 
     client.send(
         {"op": "clone"},
         handler=lambda response: done(response)
-        and initialize_sessions(client, view, capabilities, response),
+        and initialize_sessions(client, printq, view, capabilities, response),
     )
 
 
-def initiate(client, view):
+def initiate(client, printq, view):
     client.send(
         {"op": "describe"},
-        handler=lambda response: done(response) and clone(client, view, response),
+        handler=lambda response: done(response) and clone(client, printq, view, response),
     )

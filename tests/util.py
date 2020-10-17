@@ -46,7 +46,7 @@ class ViewTestCase(TestCase):
     @classmethod
     def tearDownClass(self):
         if self.view:
-            self.view.window().run_command("close_file")
+            self.view.window().run_command("close")
 
     def setUp(self):
         self.clear_view()

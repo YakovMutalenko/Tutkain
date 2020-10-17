@@ -1,4 +1,3 @@
-import collections
 import glob
 import json
 import os
@@ -17,6 +16,7 @@ from sublime_plugin import (
 
 from .src import selectors
 from .src import sexp
+from .src import state
 from .src import forms
 from .src import indent
 from .src import inline
@@ -31,12 +31,6 @@ from .src.repl.client import Client
 
 
 from .src.log import log, start_logging, stop_logging
-
-
-state = {
-    "active_repl_view": collections.defaultdict(dict),
-    "client_by_view": collections.defaultdict(dict),
-}
 
 
 def make_color_scheme(cache_dir):
@@ -124,36 +118,6 @@ def plugin_unloaded():
     preferences = sublime.load_settings("Preferences.sublime-settings")
     preferences.clear_on_change("Tutkain")
 
-def get_active_repl_view(window):
-    return state.get("active_repl_view").get(window.id())
-
-
-def set_active_repl_view(view):
-    state["active_repl_view"][view.window().id()] = view
-
-
-def get_view_client(view):
-    return view and state["client_by_view"].get(view.id())
-
-
-def get_active_view_client(window):
-    return get_view_client(get_active_repl_view(window))
-
-
-def get_active_view_sessions(window):
-    client = get_active_view_client(window)
-    return client and client.sessions_by_owner
-
-
-def get_session_by_owner(window, owner):
-    sessions = get_active_view_sessions(window)
-    return sessions and sessions.get(owner)
-
-
-def forget_repl_view(view):
-    if view and view.id() in state["client_by_view"]:
-        del state["client_by_view"][view.id()]
-
 
 class TutkainClearOutputViewCommand(WindowCommand):
     def clear_view(self, view):
@@ -165,12 +129,12 @@ class TutkainClearOutputViewCommand(WindowCommand):
             inline.clear(self.window.active_view())
 
     def run(self):
-        session = get_session_by_owner(self.window, "user")
+        session = state.get_session_by_owner(self.window, "user")
 
         if session:
             self.clear_view(session.view)
 
-        client = get_active_view_client(self.window)
+        client = state.get_active_view_client(self.window)
         panel = tap.find_panel(self.window, client)
         panel and self.clear_view(panel)
 
@@ -214,7 +178,7 @@ class TutkainEvaluateFormCommand(TextCommand):
                 return innermost and innermost.extent()
 
     def run(self, edit, scope="outermost", ignore={"comment"}, inline_result=False):
-        session = get_session_by_owner(self.view.window(), "user")
+        session = state.get_session_by_owner(self.view.window(), "user")
 
         if session is None:
             self.view.window().status_message("ERR: Not connected to a REPL.")
@@ -272,7 +236,7 @@ class TutkainEvaluateViewCommand(TextCommand):
 
     def run(self, edit):
         window = self.view.window()
-        session = get_session_by_owner(window, "user")
+        session = state.get_session_by_owner(window, "user")
 
         if session is None:
             window.status_message("ERR: Not connected to a REPL.")
@@ -293,7 +257,7 @@ class TutkainEvaluateViewCommand(TextCommand):
 
 class TutkainRunTestsInCurrentNamespaceCommand(TextCommand):
     def run(self, edit):
-        session = get_session_by_owner(self.view.window(), "plugin")
+        session = state.get_session_by_owner(self.view.window(), "plugin")
         test.run(self.view, session)
 
 
@@ -304,7 +268,7 @@ class TutkainRunTestUnderCursorCommand(TextCommand):
         test_var = test.current(self.view, point)
 
         if test_var:
-            session = get_session_by_owner(self.view.window(), "plugin")
+            session = state.get_session_by_owner(self.view.window(), "plugin")
             test.run(self.view, session, test_vars=[test_var])
 
 
@@ -401,7 +365,7 @@ class TutkainEvaluateInputCommand(WindowCommand):
         pass
 
     def run(self):
-        session = get_session_by_owner(self.window, "user")
+        session = state.get_session_by_owner(self.window, "user")
 
         if session is None:
             self.window.status_message("ERR: Not connected to a REPL.")
@@ -469,23 +433,14 @@ class TutkainConnectCommand(WindowCommand):
 
         return view
 
-    def create_tap_panel(self, client):
-        if not tap.find_panel(self.window, client):
-            panel_name = tap.panel_name(self.window, client)
-            panel = self.window.create_output_panel(panel_name)
-            panel.settings().set("line_numbers", False)
-            panel.settings().set("gutter", False)
-            panel.settings().set("is_widget", True)
-            panel.settings().set("scroll_past_end", False)
-            panel.assign_syntax("Clojure (Tutkain).sublime-syntax")
-
     def run(self, host, port):
         try:
-            client = Client(host, int(port), queue.Queue(), queue.Queue()).go()
-            self.create_tap_panel(client)
+            client = Client(host, int(port)).go()
+            tap.create_panel(self.window, client)
             view = self.create_output_view(host, port)
-            state["client_by_view"][view.id()] = client
-            handshake.initiate(client, view)
+            state.set_view_client(view, client)
+            printq = queue.Queue()
+            handshake.initiate(client, printq, view)
         except ConnectionRefusedError:
             self.window.status_message(f"ERR: connection to {host}:{port} refused.")
 
@@ -496,7 +451,7 @@ class TutkainConnectCommand(WindowCommand):
 class TutkainDisconnectCommand(WindowCommand):
     def run(self):
         inline.clear(self.window.active_view())
-        view = get_active_repl_view(self.window)
+        view = state.get_active_repl_view(self.window)
         view and view.close()
 
 
@@ -543,7 +498,7 @@ class TutkainViewEventListener(ViewEventListener):
             if self.view.match_selector(
                 point, "meta.symbol - meta.function.parameters"
             ):
-                session = get_session_by_owner(self.view.window(), "plugin")
+                session = state.get_session_by_owner(self.view.window(), "plugin")
 
                 if session and session.supports("completions"):
                     scope = selectors.expand_by_selector(
@@ -582,7 +537,7 @@ def lookup(view, point, handler):
         symbol = selectors.expand_by_selector(view, point, "meta.symbol")
 
         if symbol:
-            session = get_session_by_owner(view.window(), "plugin")
+            session = state.get_session_by_owner(view.window(), "plugin")
 
             # TODO: Cache lookup results?
             if session and session.supports("lookup"):
@@ -626,7 +581,7 @@ class TutkainEventListener(EventListener):
 
     def on_activated(self, view):
         if view.settings().get("tutkain_repl_output_view"):
-            set_active_repl_view(view)
+            state.set_active_repl_view(view)
 
     def on_hover(self, view, point, hover_zone):
         lookup(view, point, lambda response: info.show_popup(view, point, response))
@@ -634,11 +589,11 @@ class TutkainEventListener(EventListener):
     def on_pre_close(self, view):
         if view and view.settings().get("tutkain_repl_output_view"):
             window = view.window()
-            client = get_view_client(view)
+            client = state.get_view_client(view)
 
             if client:
                 client.halt()
-                forget_repl_view(view)
+                state.forget_repl_view(view)
 
                 # TODO: This sometimes crashes ST.
                 #
@@ -673,7 +628,7 @@ class TutkainExpandSelectionCommand(TextCommand):
 
 class TutkainInterruptEvaluationCommand(WindowCommand):
     def run(self):
-        session = get_session_by_owner(self.window, "user")
+        session = state.get_session_by_owner(self.window, "user")
 
         if session is None:
             self.window.status_message("ERR: Not connected to a REPL.")

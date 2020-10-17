@@ -27,12 +27,12 @@ class Client(object):
             except OSError as e:
                 log.debug({"event": "error", "exception": e})
 
-    def __init__(self, host, port, sendq, recvq):
+    def __init__(self, host, port):
         self.uuid = str(uuid.uuid4())
         self.host = host
         self.port = port
-        self.sendq = sendq
-        self.recvq = recvq
+        self.sendq = queue.Queue()
+        self.recvq = queue.Queue()
         self.stop_event = Event()
         self.sessions = {}
         self.sessions_by_owner = {}
@@ -79,10 +79,6 @@ class Client(object):
     def send(self, op, handler=None):
         id = str(uuid.uuid4())
         op["id"] = id
-
-        if handler is None:
-            handler = self.recvq.put
-
         self.handlers[id] = handler
         self.sendq.put(op)
 
@@ -100,20 +96,16 @@ class Client(object):
             finally:
                 self.handlers.pop(id, None)
 
-    def send_disconnect_notification(self):
-        session = self.sessions_by_owner.get("plugin")
-        session and session.output({"value": ":tutkain/disconnected\n"})
-
     def recv_loop(self):
         try:
             while not self.stop_event.is_set():
                 item = bencode.read(self.buffer)
 
                 if item is None:
-                    self.send_disconnect_notification()
                     break
 
                 log.debug({"event": "socket/recv", "item": item})
+
                 self.handle(item)
         except OSError as error:
             log.error({"event": "error", "error": error})

@@ -4,6 +4,7 @@ import collections
 state = {
     "active_repl_view": collections.defaultdict(dict),
     "client_by_view": collections.defaultdict(dict),
+    "view_by_session": collections.defaultdict(dict)
 }
 
 
@@ -35,6 +36,14 @@ def get_active_view_sessions(window):
 def get_session_by_owner(window, owner):
     sessions = get_active_view_sessions(window)
     return sessions and sessions.get(owner)
+
+
+def set_session_view(session_id, view):
+    state["view_by_session"][session_id] = view
+
+
+def get_session_view(session_id):
+    return state["view_by_session"].get(session_id)
 
 
 def forget_repl_view(view):

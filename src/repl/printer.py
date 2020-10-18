@@ -1,6 +1,5 @@
-from sublime import Region, DRAW_NO_OUTLINE
 import uuid
-
+from sublime import Region, DRAW_NO_OUTLINE
 from ..log import log
 from .. import state
 
@@ -20,6 +19,8 @@ def append_to_view(view, characters):
 
 def print_loop(printq):
     try:
+        log.debug({'event': 'thread/start'})
+
         while True:
             item = printq.get()
 
@@ -29,17 +30,6 @@ def print_loop(printq):
             view = item.get("view")
             printable = item.get("printable")
             response = item.get("response")
-
-            if response and view and "status" in response and "done" in response["status"]:
-                view_size = view.size()
-                last_char = view.substr(Region(view_size - 1, view_size))
-
-                if last_char != "\n":
-                    print("#!ASDASDASDAS", last_char.encode())
-                    if printable is None:
-                        printable = "\n"
-                    else:
-                        printable += "\n"
 
             append_to_view(view, printable)
 
@@ -53,5 +43,15 @@ def print_loop(printq):
                     else "tutkain.repl.stdout"
                 )
                 view.add_regions(key, regions, scope=scope, flags=DRAW_NO_OUTLINE)
+
+            # if "tap" in response and settings().get("tap_panel"):
+            #     window = session.view.window()
+            #     tap.show_panel(window, client)
+            #     append_to_view(tap.find_panel(window, client), response["tap"])
     finally:
+        # view = state.get_active_repl_view(window)
+
+        # if view:
+        #     append_to_view(view, ':tutkain/disconnected\n')
+
         log.debug({"event": "thread/exit"})

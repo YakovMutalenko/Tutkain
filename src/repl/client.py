@@ -33,6 +33,7 @@ class Client(object):
         self.port = port
         self.sendq = queue.Queue()
         self.recvq = queue.Queue()
+        self.pubq = queue.Queue()
         self.stop_event = Event()
         self.sessions = {}
         self.sessions_by_owner = {}
@@ -44,6 +45,7 @@ class Client(object):
     def register_session(self, owner, session):
         self.sessions[session.id] = session
         self.sessions_by_owner[owner] = session
+        self.pubq.put({"new-session": session.id})
         return session
 
     def go(self):
@@ -116,6 +118,9 @@ class Client(object):
 
             # Feed poison pill to input queue.
             self.sendq.put(None)
+
+            # Tell notification consumers to stop listening.
+            self.pubq.put(None)
 
             log.debug({"event": "thread/exit"})
 

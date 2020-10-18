@@ -7,6 +7,7 @@ from .session import Session
 from . import formatter
 from . import printer
 from ..log import log
+from .. import state
 
 
 def done(response):
@@ -55,8 +56,9 @@ def create_sessions(client, session, view, response):
 
     def create_session(owner, response):
         new_session_id = response["new-session"]
-        new_session = Session(new_session_id, client, view)
+        new_session = Session(new_session_id, client)
         new_session.info = info
+        state.set_session_view(new_session_id, view)
         client.register_session(owner, new_session)
 
     session.send(
@@ -110,15 +112,8 @@ def sideload(client, session, view):
 
 def initialize_sessions(client, printq, view, capabilities, response):
     session_id = response.get("new-session")
-    session = Session(session_id, client, view)
-
-    print_loop = Thread(daemon=True, target=printer.print_loop, args=(printq,))
-    print_loop.name = "tutkain.print_loop"
-    print_loop.start()
-
-    format_loop = Thread(daemon=True, target=formatter.format_loop, args=(view.window(), client, printq,))
-    format_loop.name = "tutkain.format_loop"
-    format_loop.start()
+    session = Session(session_id, client)
+    state.set_session_view(session_id, view)
 
     if "sideloader-start" in capabilities["ops"]:
         client.register_session("sideloader", session)
@@ -129,8 +124,9 @@ def initialize_sessions(client, printq, view, capabilities, response):
         session.output(capabilities)
 
         def register_session(response):
-            session = Session(response["new-session"], client, view)
+            session = Session(response["new-session"], client)
             session.info = capabilities
+            state.set_session_view(session.id, view)
             client.register_session("user", session)
 
         client.send(
@@ -149,8 +145,48 @@ def clone(client, printq, view, response):
     )
 
 
-def initiate(client, printq, view):
+def handshake(client, printq, view):
     client.send(
         {"op": "describe"},
         handler=lambda response: done(response) and clone(client, printq, view, response),
     )
+
+
+def create_output_view(window, client):
+    active_view = window.active_view()
+
+    view_count = len(window.views_in_group(1))
+    suffix = "" if view_count == 0 else f" ({view_count})"
+
+    view = window.new_file()
+    view.set_name(f"REPL | {client.host}:{client.port}{suffix}")
+    view.settings().set("line_numbers", False)
+    view.settings().set("gutter", False)
+    view.settings().set("is_widget", True)
+    view.settings().set("scroll_past_end", False)
+    view.settings().set("tutkain_repl_output_view", True)
+    view.set_read_only(True)
+    view.set_scratch(True)
+
+    view.assign_syntax("Clojure (Tutkain).sublime-syntax")
+
+    # Move the output view into the second row.
+    window.set_view_index(view, 1, view_count)
+
+    # Activate the output view and the view that was active prior to
+    # creating the output view.
+    window.focus_view(view)
+    window.focus_view(active_view)
+
+    return view
+
+
+def establish(window, client, printq):
+    view = create_output_view(window, client)
+    state.set_view_client(view, client)
+
+    format_loop = Thread(daemon=True, target=formatter.format_loop, args=(window, client.recvq, printq,))
+    format_loop.name = "tutkain.connection.format_loop"
+    format_loop.start()
+
+    handshake(client, printq, view)

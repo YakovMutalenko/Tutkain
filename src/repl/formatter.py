@@ -1,5 +1,6 @@
 from ..log import log
-from sublime import DRAW_NO_OUTLINE, Region
+from .. import state
+
 
 def format(response):
     if "status" in response and "interrupted" in response["status"]:
@@ -7,7 +8,7 @@ def format(response):
     if "status" in response and "session-idle" in response["status"]:
         return ":tutkain/nothing-to-interrupt\n"
     if "value" in response:
-        return response["value"].replace("\r", "")
+        return response["value"].rstrip().replace("\r", "") + "\n"
     if "summary" in response:
         return response["summary"] + "\n"
     if "tap" in response:
@@ -45,35 +46,31 @@ def format(response):
             incremental = nrepl_version.get("incremental")
             result.append(f"""nREPL {major}.{minor}.{incremental}""")
 
-        return "\n".join(result)
+        return "\n".join(result) + "\n"
 
 
-def format_loop(window, client, printq):
+def format_loop(window, recvq, printq):
     try:
         log.debug({"event": "thread/start"})
 
         while True:
-            response = client.recvq.get()
+            response = recvq.get()
 
             if response is None:
                 break
 
-            # if "tap" in response and settings().get("tap_panel"):
-            #     window = session.view.window()
-            #     tap.show_panel(window, client)
-            #     append_to_view(tap.find_panel(window, client), response["tap"])
+            log.debug({"event": "formatq/recv", "data": response})
 
-            log.debug({"event": "fmtq/recv", "data": response})
+            session_id = response.get("session")
 
-            session = client.sessions.get(response.get("session"))
-
-            if session:
-                view = session.view
+            if session_id:
+                view = state.get_session_view(session_id)
             else:
                 view = state.get_active_repl_view(window)
 
-            printq.put({"view": view, "printable": format(response), "response": response})
+            printable = format(response)
+
+            printq.put({"view": view, "printable": printable, "response": response})
     finally:
-        printq.put({"view": view, "printable": ":tutkain/disconnected\n"})
         printq.put(None)
         log.debug({"event": "thread/exit"})

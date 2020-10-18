@@ -3,7 +3,8 @@ import json
 import os
 import queue
 import sublime
-import uuid
+
+from threading import Thread
 
 from sublime_plugin import (
     EventListener,
@@ -23,10 +24,11 @@ from .src import inline
 from .src import paredit
 from .src import namespace
 from .src import test
-from .src.repl import handshake
+from .src.repl import connection
 from .src.repl import info
 from .src.repl import history
 from .src.repl import tap
+from .src.repl import printer
 from .src.repl.client import Client
 
 
@@ -129,10 +131,10 @@ class TutkainClearOutputViewCommand(WindowCommand):
             inline.clear(self.window.active_view())
 
     def run(self):
-        session = state.get_session_by_owner(self.window, "user")
+        view = state.get_active_repl_view(self.window)
 
-        if session:
-            self.clear_view(session.view)
+        if view:
+            self.clear_view(view)
 
         client = state.get_active_view_client(self.window)
         panel = tap.find_panel(self.window, client)
@@ -404,43 +406,18 @@ class TutkainConnectCommand(WindowCommand):
 
         self.window.set_layout(layout)
 
-    def create_output_view(self, host, port):
-        self.set_layout()
-        active_view = self.window.active_view()
-
-        view_count = len(self.window.views_in_group(1))
-        suffix = "" if view_count == 0 else f" ({view_count})"
-
-        view = self.window.new_file()
-        view.set_name(f"REPL | {host}:{port}{suffix}")
-        view.settings().set("line_numbers", False)
-        view.settings().set("gutter", False)
-        view.settings().set("is_widget", True)
-        view.settings().set("scroll_past_end", False)
-        view.settings().set("tutkain_repl_output_view", True)
-        view.set_read_only(True)
-        view.set_scratch(True)
-
-        view.assign_syntax("Clojure (Tutkain).sublime-syntax")
-
-        # Move the output view into the second row.
-        self.window.set_view_index(view, 1, view_count)
-
-        # Activate the output view and the view that was active prior to
-        # creating the output view.
-        self.window.focus_view(view)
-        self.window.focus_view(active_view)
-
-        return view
-
     def run(self, host, port):
         try:
             client = Client(host, int(port)).go()
             tap.create_panel(self.window, client)
-            view = self.create_output_view(host, port)
-            state.set_view_client(view, client)
+            self.set_layout()
             printq = queue.Queue()
-            handshake.initiate(client, printq, view)
+
+            print_loop = Thread(daemon=True, target=printer.print_loop, args=(printq,))
+            print_loop.name = "tutkain.connection.print_loop"
+            print_loop.start()
+
+            connection.establish(self.window, client, printq)
         except ConnectionRefusedError:
             self.window.status_message(f"ERR: connection to {host}:{port} refused.")
 

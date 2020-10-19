@@ -13,7 +13,7 @@
 (comment
   (+ 1 2)
   (throw (ex-info "Boom!" {:a :1}))
-  (range 512)
+  (range 65535)
   (square 4)
   (foo 3 4)
   (tap> (rand-int 42))

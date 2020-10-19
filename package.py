@@ -29,6 +29,7 @@ from .src.repl import info
 from .src.repl import history
 from .src.repl import tap
 from .src.repl import printer
+from .src.repl import views
 from .src.repl.client import Client
 
 
@@ -411,13 +412,21 @@ class TutkainConnectCommand(WindowCommand):
             client = Client(host, int(port)).go()
             tap.create_panel(self.window, client)
             self.set_layout()
+            view = views.create(self.window, client)
             printq = queue.Queue()
 
-            print_loop = Thread(daemon=True, target=printer.print_loop, args=(printq,))
+            print_loop = Thread(
+                daemon=True,
+                target=printer.print_loop,
+                args=(
+                    self.window,
+                    printq,
+                ),
+            )
             print_loop.name = "tutkain.connection.print_loop"
             print_loop.start()
 
-            connection.establish(self.window, client, printq)
+            connection.establish(view, client, printq)
         except ConnectionRefusedError:
             self.window.status_message(f"ERR: connection to {host}:{port} refused.")
 

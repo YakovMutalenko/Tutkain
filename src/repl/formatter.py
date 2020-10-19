@@ -8,7 +8,7 @@ def format(response):
     if "status" in response and "session-idle" in response["status"]:
         return ":tutkain/nothing-to-interrupt\n"
     if "value" in response:
-        return response["value"].rstrip().replace("\r", "") + "\n"
+        return response["value"].replace("\r", "")
     if "summary" in response:
         return response["summary"] + "\n"
     if "tap" in response:
@@ -49,7 +49,7 @@ def format(response):
         return "\n".join(result) + "\n"
 
 
-def format_loop(window, recvq, printq):
+def format_loop(recvq, printq):
     try:
         log.debug({"event": "thread/start"})
 
@@ -60,17 +60,7 @@ def format_loop(window, recvq, printq):
                 break
 
             log.debug({"event": "formatq/recv", "data": response})
-
-            session_id = response.get("session")
-
-            if session_id:
-                view = state.get_session_view(session_id)
-            else:
-                view = state.get_active_repl_view(window)
-
-            printable = format(response)
-
-            printq.put({"view": view, "printable": printable, "response": response})
+            printq.put({"printable": format(response), "response": response})
     finally:
         printq.put(None)
         log.debug({"event": "thread/exit"})

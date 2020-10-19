@@ -1,7 +1,12 @@
+import queue
 import re
 import sublime
 import time
 
+from . import mock
+from Tutkain.src.repl.client import Client
+from Tutkain.src.repl import views
+from Tutkain.src.repl import connection
 from unittest import TestCase
 
 
@@ -37,6 +42,7 @@ def wait_until_contains(a, b, delay=0.25, retries=50):
 class ViewTestCase(TestCase):
     @classmethod
     def setUpClass(self):
+        sublime.run_command("new_window")
         self.view = sublime.active_window().new_file()
         self.view.set_scratch(True)
         self.view.sel().clear()
@@ -46,7 +52,7 @@ class ViewTestCase(TestCase):
     @classmethod
     def tearDownClass(self):
         if self.view:
-            self.view.window().run_command("close")
+            self.view.window().run_command("close_window")
 
     def setUp(self):
         self.clear_view()
@@ -85,3 +91,21 @@ class ViewTestCase(TestCase):
     def assertContainsEventually(self, a, b):
         if not wait_until_contains(a, b):
             raise AssertionError(f"'{a}' does not contain '{b()}'")
+
+
+class ReplTestCase(ViewTestCase):
+    @classmethod
+    def setUpClass(self):
+        super().setUpClass()
+        self.srv = mock.Server()
+        client = Client(self.srv.host, self.srv.port).go()
+        printq = queue.Queue()
+        self.repl_view = views.create(self.view.window(), client)
+        connection.establish(self.repl_view, client, printq)
+        self.printable = lambda self: printq.get(timeout=1)["printable"]
+
+    @classmethod
+    def tearDownClass(self):
+        self.srv.shutdown()
+        self.view.window().run_command("tutkain_disconnect")
+        super().tearDownClass()

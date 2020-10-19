@@ -123,7 +123,7 @@ def initialize_sessions(client, printq, view, capabilities, response):
         session.info = capabilities
         session.output(capabilities)
 
-        def register_session(response):
+        def register_user_session(response):
             session = Session(response["new-session"], client)
             session.info = capabilities
             state.set_session_view(session.id, view)
@@ -131,11 +131,11 @@ def initialize_sessions(client, printq, view, capabilities, response):
 
         client.send(
             {"op": "clone"},
-            handler=lambda response: done(response) and register_session(response),
+            handler=lambda response: done(response) and register_user_session(response),
         )
 
 
-def clone(client, printq, view, response):
+def clone_plugin_session(client, printq, view, response):
     capabilities = response
 
     client.send(
@@ -145,48 +145,28 @@ def clone(client, printq, view, response):
     )
 
 
-def handshake(client, printq, view):
+def send_describe(client, printq, view):
     client.send(
         {"op": "describe"},
-        handler=lambda response: done(response) and clone(client, printq, view, response),
+        handler=lambda response: done(response)
+        and clone_plugin_session(client, printq, view, response),
     )
 
 
-def create_output_view(window, client):
-    active_view = window.active_view()
-
-    view_count = len(window.views_in_group(1))
-    suffix = "" if view_count == 0 else f" ({view_count})"
-
-    view = window.new_file()
-    view.set_name(f"REPL | {client.host}:{client.port}{suffix}")
-    view.settings().set("line_numbers", False)
-    view.settings().set("gutter", False)
-    view.settings().set("is_widget", True)
-    view.settings().set("scroll_past_end", False)
-    view.settings().set("tutkain_repl_output_view", True)
-    view.set_read_only(True)
-    view.set_scratch(True)
-
-    view.assign_syntax("Clojure (Tutkain).sublime-syntax")
-
-    # Move the output view into the second row.
-    window.set_view_index(view, 1, view_count)
-
-    # Activate the output view and the view that was active prior to
-    # creating the output view.
-    window.focus_view(view)
-    window.focus_view(active_view)
-
-    return view
-
-
-def establish(window, client, printq):
-    view = create_output_view(window, client)
+def establish(view, client, printq):
     state.set_view_client(view, client)
+    state.set_active_repl_view(view)
 
-    format_loop = Thread(daemon=True, target=formatter.format_loop, args=(window, client.recvq, printq,))
+    format_loop = Thread(
+        daemon=True,
+        target=formatter.format_loop,
+        args=(
+            client.recvq,
+            printq,
+        ),
+    )
+
     format_loop.name = "tutkain.connection.format_loop"
     format_loop.start()
 
-    handshake(client, printq, view)
+    send_describe(client, printq, view)

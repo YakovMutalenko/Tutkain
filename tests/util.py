@@ -4,9 +4,10 @@ import sublime
 import time
 
 from . import mock
+from Tutkain.src import state
 from Tutkain.src.repl.client import Client
-from Tutkain.src.repl import views
-from Tutkain.src.repl import connection
+from Tutkain.src import repl
+
 from unittest import TestCase
 
 
@@ -100,8 +101,10 @@ class ReplTestCase(ViewTestCase):
         self.srv = mock.Server()
         client = Client(self.srv.host, self.srv.port).go()
         printq = queue.Queue()
-        self.repl_view = views.create(self.view.window(), client)
-        connection.establish(self.repl_view, client, printq)
+        view = repl.views.create(self.view.window(), client)
+        state.set_view_client(view, client)
+        state.set_active_repl_view(view)
+        repl.connection.establish(client, printq)
         self.printable = lambda self: printq.get(timeout=1)["printable"]
 
     @classmethod

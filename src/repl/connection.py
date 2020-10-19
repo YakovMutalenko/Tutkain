@@ -5,7 +5,6 @@ import sublime
 from threading import Thread
 from .session import Session
 from . import formatter
-from . import printer
 from ..log import log
 from .. import state
 
@@ -49,7 +48,7 @@ def sideloader_provide(session, response):
         )
 
 
-def create_sessions(client, session, view, response):
+def create_sessions(client, session, response):
     info = response
     session.info = info
     session.output(response)
@@ -58,7 +57,6 @@ def create_sessions(client, session, view, response):
         new_session_id = response["new-session"]
         new_session = Session(new_session_id, client)
         new_session.info = info
-        state.set_session_view(new_session_id, view)
         client.register_session(owner, new_session)
 
     session.send(
@@ -72,12 +70,12 @@ def create_sessions(client, session, view, response):
     )
 
 
-def sideload(client, session, view):
+def sideload(client, session):
     def describe():
         session.send(
             {"op": "describe"},
             handler=lambda response: done(response)
-            and create_sessions(client, session, view, response),
+            and create_sessions(client, session, response),
         )
 
     def add_tap():
@@ -110,14 +108,13 @@ def sideload(client, session, view):
     )
 
 
-def initialize_sessions(client, printq, view, capabilities, response):
+def initialize_sessions(client, printq, capabilities, response):
     session_id = response.get("new-session")
     session = Session(session_id, client)
-    state.set_session_view(session_id, view)
 
     if "sideloader-start" in capabilities["ops"]:
         client.register_session("sideloader", session)
-        sideload(client, session, view)
+        sideload(client, session)
     else:
         client.register_session("plugin", session)
         session.info = capabilities
@@ -126,7 +123,6 @@ def initialize_sessions(client, printq, view, capabilities, response):
         def register_user_session(response):
             session = Session(response["new-session"], client)
             session.info = capabilities
-            state.set_session_view(session.id, view)
             client.register_session("user", session)
 
         client.send(
@@ -135,28 +131,25 @@ def initialize_sessions(client, printq, view, capabilities, response):
         )
 
 
-def clone_plugin_session(client, printq, view, response):
+def clone_plugin_session(client, printq, response):
     capabilities = response
 
     client.send(
         {"op": "clone"},
         handler=lambda response: done(response)
-        and initialize_sessions(client, printq, view, capabilities, response),
+        and initialize_sessions(client, printq, capabilities, response),
     )
 
 
-def send_describe(client, printq, view):
+def send_describe(client, printq):
     client.send(
         {"op": "describe"},
         handler=lambda response: done(response)
-        and clone_plugin_session(client, printq, view, response),
+        and clone_plugin_session(client, printq, response),
     )
 
 
-def establish(view, client, printq):
-    state.set_view_client(view, client)
-    state.set_active_repl_view(view)
-
+def establish(client, printq):
     format_loop = Thread(
         daemon=True,
         target=formatter.format_loop,
@@ -169,4 +162,4 @@ def establish(view, client, printq):
     format_loop.name = "tutkain.connection.format_loop"
     format_loop.start()
 
-    send_describe(client, printq, view)
+    send_describe(client, printq)

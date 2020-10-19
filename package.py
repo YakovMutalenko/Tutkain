@@ -413,6 +413,9 @@ class TutkainConnectCommand(WindowCommand):
             tap.create_panel(self.window, client)
             self.set_layout()
             view = views.create(self.window, client)
+            state.set_view_client(view, client)
+            state.set_active_repl_view(view)
+
             printq = queue.Queue()
 
             print_loop = Thread(
@@ -427,7 +430,7 @@ class TutkainConnectCommand(WindowCommand):
             print_loop.name = "tutkain.connection.print_loop"
             print_loop.start()
 
-            connection.establish(view, client, printq)
+            connection.establish(client, printq)
         except ConnectionRefusedError:
             self.window.status_message(f"ERR: connection to {host}:{port} refused.")
 

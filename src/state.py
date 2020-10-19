@@ -38,15 +38,6 @@ def get_session_by_owner(window, owner):
     return sessions and sessions.get(owner)
 
 
-def set_session_view(session_id, view):
-    state["view_by_session"][session_id] = view
-
-
-def get_session_view(session_id):
-    return state["view_by_session"].get(session_id)
-
-
 def forget_repl_view(view):
     if view and view.id() in state["client_by_view"]:
         del state["client_by_view"][view.id()]
-

@@ -24,7 +24,7 @@ from .src import inline
 from .src import paredit
 from .src import namespace
 from .src import test
-from .src.repl import connection
+from .src.repl import machinery
 from .src.repl import info
 from .src.repl import history
 from .src.repl import tap
@@ -137,8 +137,7 @@ class TutkainClearOutputViewCommand(WindowCommand):
         if view:
             self.clear_view(view)
 
-        client = state.get_active_view_client(self.window)
-        panel = tap.find_panel(self.window, client)
+        panel = self.window.find_output_panel(tap.panel_name)
         panel and self.clear_view(panel)
 
 
@@ -228,14 +227,15 @@ class TutkainEvaluateFormCommand(TextCommand):
 class TutkainEvaluateViewCommand(TextCommand):
     def handler(self, session, response):
         if "err" in response:
-            session.output({"value": ":tutkain/failed\n"})
+            session.output({"value": ":tutkain/failed"})
             session.output(response)
             session.denounce(response)
         elif "nrepl.middleware.caught/throwable" in response:
             session.output(response)
         elif response.get("status") == ["done"]:
             if not session.is_denounced(response):
-                session.output({"value": ":tutkain/loaded\n"})
+                session.output({"value": ":tutkain/loaded"})
+                session.output(response)
 
     def run(self, edit):
         window = self.view.window()
@@ -386,6 +386,8 @@ class TutkainEvaluateInputCommand(WindowCommand):
 
 
 class TutkainConnectCommand(WindowCommand):
+    tap_loop = None
+
     def set_layout(self):
         # Set up a two-row layout.
         #
@@ -409,14 +411,14 @@ class TutkainConnectCommand(WindowCommand):
 
     def run(self, host, port):
         try:
-            client = Client(host, int(port)).go()
-            tap.create_panel(self.window, client)
             self.set_layout()
+            client = Client(host, int(port)).go()
             view = views.create(self.window, client)
             state.set_view_client(view, client)
             state.set_active_repl_view(view)
 
             printq = queue.Queue()
+            tapq = queue.Queue()
 
             print_loop = Thread(
                 daemon=True,
@@ -430,7 +432,20 @@ class TutkainConnectCommand(WindowCommand):
             print_loop.name = "tutkain.connection.print_loop"
             print_loop.start()
 
-            connection.establish(client, printq)
+            if settings().get("tap_panel") and self.tap_loop is None:
+                self.tap_loop = Thread(
+                    daemon=True,
+                    target=tap.tap_loop,
+                    args=(
+                        self.window,
+                        tapq,
+                    ),
+                )
+
+                self.tap_loop.name = "tutkain.connection.tap_loop"
+                self.tap_loop.start()
+
+            machinery.start(client, printq, tapq)
         except ConnectionRefusedError:
             self.window.status_message(f"ERR: connection to {host}:{port} refused.")
 
@@ -593,7 +608,7 @@ class TutkainEventListener(EventListener):
                 #     'rows': [0.0, 1.0]
                 # })
 
-                window.destroy_output_panel(tap.panel_name(window, client))
+                window.destroy_output_panel(tap.panel_name)
 
             if window:
                 active_view = window.active_view()

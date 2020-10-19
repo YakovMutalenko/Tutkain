@@ -6,7 +6,6 @@ from threading import Thread
 from .session import Session
 from . import formatter
 from ..log import log
-from .. import state
 
 
 def done(response):
@@ -108,7 +107,7 @@ def sideload(client, session):
     )
 
 
-def initialize_sessions(client, printq, capabilities, response):
+def initialize_sessions(client, capabilities, response):
     session_id = response.get("new-session")
     session = Session(session_id, client)
 
@@ -131,35 +130,28 @@ def initialize_sessions(client, printq, capabilities, response):
         )
 
 
-def clone_plugin_session(client, printq, response):
+def clone(client, response):
     capabilities = response
 
     client.send(
         {"op": "clone"},
         handler=lambda response: done(response)
-        and initialize_sessions(client, printq, capabilities, response),
+        and initialize_sessions(client, capabilities, response),
     )
 
 
-def send_describe(client, printq):
-    client.send(
-        {"op": "describe"},
-        handler=lambda response: done(response)
-        and clone_plugin_session(client, printq, response),
-    )
-
-
-def establish(client, printq):
+def start(client, printq, tapq):
     format_loop = Thread(
         daemon=True,
         target=formatter.format_loop,
-        args=(
-            client.recvq,
-            printq,
-        ),
+        args=(client.recvq, printq, tapq),
     )
 
     format_loop.name = "tutkain.connection.format_loop"
     format_loop.start()
 
-    send_describe(client, printq)
+    client.send(
+        {"op": "describe"},
+        handler=lambda response: done(response)
+        and clone(client, response),
+    )

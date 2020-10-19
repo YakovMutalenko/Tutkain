@@ -10,6 +10,7 @@ class Server:
     Use recv() to receive Bencoded data from the client. Use send() to send bencoded data to the
     client.
     """
+
     def __init__(self):
         self.server = self.socket_server()
         self.executor = futures.ThreadPoolExecutor(max_workers=1)

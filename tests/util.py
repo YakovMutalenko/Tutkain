@@ -45,6 +45,7 @@ class ViewTestCase(TestCase):
     def setUpClass(self):
         sublime.run_command("new_window")
         self.view = sublime.active_window().new_file()
+        self.view.set_name("tutkain.clj")
         self.view.set_scratch(True)
         self.view.sel().clear()
         self.view.window().focus_view(self.view)
@@ -98,14 +99,21 @@ class ReplTestCase(ViewTestCase):
     @classmethod
     def setUpClass(self):
         super().setUpClass()
+
         self.srv = mock.Server()
         client = Client(self.srv.host, self.srv.port).go()
+
         printq = queue.Queue()
+        tapq = queue.Queue()
+
         view = repl.views.create(self.view.window(), client)
         state.set_view_client(view, client)
         state.set_active_repl_view(view)
-        repl.connection.establish(client, printq)
-        self.printable = lambda self: printq.get(timeout=1)["printable"]
+
+        repl.machinery.start(client, printq, tapq)
+
+        self.take_print = lambda self: printq.get(timeout=1)["printable"]
+        self.take_tap = lambda self: tapq.get(timeout=1)
 
     @classmethod
     def tearDownClass(self):

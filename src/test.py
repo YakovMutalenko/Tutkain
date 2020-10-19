@@ -129,7 +129,9 @@ def run_tests(view, session, response, file, file_path, test_vars):
             if int(sublime.version()) >= 4073 and session.supports("tutkain/test"):
 
                 def handler(response):
-                    session.output(response)
+                    if "summary" in response:
+                        session.output(response)
+
                     add_markers(view, session, response)
                     progress.stop()
 

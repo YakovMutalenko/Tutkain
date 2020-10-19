@@ -3,24 +3,24 @@ from ..log import log
 
 def format(response):
     if "status" in response and "interrupted" in response["status"]:
-        return ":tutkain/interrupted\n"
+        return "\n:tutkain/interrupted"
     if "status" in response and "session-idle" in response["status"]:
         return ":tutkain/nothing-to-interrupt\n"
     if "value" in response:
         return response["value"].rstrip()
     if "summary" in response:
-        return response["summary"] + "\n"
+        return response["summary"]
     if "tap" in response:
         return response["tap"]
     if "nrepl.middleware.caught/throwable" in response:
-        return response["nrepl.middleware.caught/throwable"]
+        return response["nrepl.middleware.caught/throwable"].rstrip()
     if "out" in response:
         return response["out"]
     if "in" in response:
         ns = response.get("ns") or ""
         return "{}=> {}\n".format(ns, response["in"])
     if "err" in response:
-        return response.get("err").rstrip()
+        return response.get("err")
     if "versions" in response:
         result = []
 
@@ -48,7 +48,7 @@ def format(response):
         return "\n".join(result)
 
 
-def format_loop(recvq, printq):
+def format_loop(recvq, printq, tapq):
     try:
         log.debug({"event": "thread/start"})
 
@@ -59,15 +59,20 @@ def format_loop(recvq, printq):
                 break
 
             log.debug({"event": "formatq/recv", "data": response})
-            printable = format(response)
 
-            if "status" in response and "done" in response["status"]:
-                if printable:
-                    printable += "\n"
-                else:
-                    printable = "\n"
+            if "tap" in response:
+                tapq.put(response)
+            else:
+                printable = format(response)
 
-            printq.put({"printable": printable, "response": response})
+                if "status" in response and "done" in response["status"]:
+                    if printable:
+                        printable += "\n"
+                    else:
+                        printable = "\n"
+
+                printq.put({"printable": printable, "response": response})
     finally:
         printq.put(None)
+        tapq.put(None)
         log.debug({"event": "thread/exit"})

@@ -419,10 +419,11 @@ class TutkainConnectCommand(WindowCommand):
                 daemon=True,
                 target=printer.print_loop,
                 args=(
-                    self.window,
+                    view,
                     printq,
                 ),
             )
+
             print_loop.name = "tutkain.connection.print_loop"
             print_loop.start()
 

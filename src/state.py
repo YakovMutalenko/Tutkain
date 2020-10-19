@@ -13,7 +13,6 @@ def set_view_client(view, client):
 
 
 def get_active_repl_view(window):
-    print(state.get("active_repl_view"))
     return state.get("active_repl_view").get(window.id())
 
 

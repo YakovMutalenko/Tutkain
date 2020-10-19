@@ -1,6 +1,4 @@
 import uuid
-import time
-
 from .util import ReplTestCase
 
 
@@ -9,7 +7,7 @@ def select_keys(d, ks):
 
 
 class TestBabashka(ReplTestCase):
-    def test_smoke(self):
+    def handshake(self):
         # Client sends describe op
         msg = self.srv.recv()
         self.assertEquals({"op", "id"}, msg.keys())
@@ -69,6 +67,11 @@ class TestBabashka(ReplTestCase):
 
         self.assertEquals("Babashka 0.2.2\nbabashka.nrepl 0.0.4-SNAPSHOT\n", self.printable())
 
+        return plugin_session_id, user_session_id
+
+    def test_eval(self):
+        plugin_session_id, user_session_id = self.handshake()
+
         # Client evaluates (inc 1)
         self.set_view_content("(inc 1)")
         self.set_selections((0, 0))
@@ -110,4 +113,7 @@ class TestBabashka(ReplTestCase):
         )
 
         self.assertEquals("user=> (inc 1)\n", self.printable())
-        self.assertEquals("2\n", self.printable())
+        self.assertEquals("2", self.printable())
+        # Babashka sends one empty reply. We ignore it.
+        self.printable()
+        self.assertEquals("\n", self.printable())

@@ -1,5 +1,4 @@
 from ..log import log
-from .. import state
 
 
 def format(response):
@@ -8,7 +7,7 @@ def format(response):
     if "status" in response and "session-idle" in response["status"]:
         return ":tutkain/nothing-to-interrupt\n"
     if "value" in response:
-        return response["value"].replace("\r", "")
+        return response["value"].rstrip()
     if "summary" in response:
         return response["summary"] + "\n"
     if "tap" in response:
@@ -21,7 +20,7 @@ def format(response):
         ns = response.get("ns") or ""
         return "{}=> {}\n".format(ns, response["in"])
     if "err" in response:
-        return response.get("err")
+        return response.get("err").rstrip()
     if "versions" in response:
         result = []
 
@@ -46,7 +45,7 @@ def format(response):
             incremental = nrepl_version.get("incremental")
             result.append(f"""nREPL {major}.{minor}.{incremental}""")
 
-        return "\n".join(result) + "\n"
+        return "\n".join(result)
 
 
 def format_loop(recvq, printq):
@@ -60,7 +59,15 @@ def format_loop(recvq, printq):
                 break
 
             log.debug({"event": "formatq/recv", "data": response})
-            printq.put({"printable": format(response), "response": response})
+            printable = format(response)
+
+            if "status" in response and "done" in response["status"]:
+                if printable:
+                    printable += "\n"
+                else:
+                    printable = "\n"
+
+            printq.put({"printable": printable, "response": response})
     finally:
         printq.put(None)
         log.debug({"event": "thread/exit"})

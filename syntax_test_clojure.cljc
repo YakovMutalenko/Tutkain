@@ -2392,6 +2392,11 @@
 ;           ^^^ constant.language.edn
 ;               ^ meta.sexp.end.edn punctuation.section.parens.end.edn
 
+  (proxy [java.io.Writer] []
+    (write
+     ([x] ,,,)
+     ([x off len] ,,,)))
+;                     ^^ meta.sexp.end.edn - invalid
 
 
 ; # extend-protocol

@@ -227,7 +227,7 @@ class TutkainEvaluateFormCommand(TextCommand):
 class TutkainEvaluateViewCommand(TextCommand):
     def handler(self, session, response):
         if "err" in response:
-            session.output({"value": ":tutkain/failed"})
+            session.output({"value": ":tutkain/failed\n"})
             session.output(response)
             session.denounce(response)
         elif "nrepl.middleware.caught/throwable" in response:

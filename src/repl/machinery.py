@@ -18,6 +18,11 @@ def handle_sideloader_provide_response(session, response):
         session.output({"err": f"unexpected provide: {name}\n"})
 
 
+def b64encode_file(path):
+    with open(path, "rb") as file:
+        return base64.b64encode(file.read()).decode("utf-8")
+
+
 def sideloader_provide(session, response):
     if "name" in response:
         name = response["name"]
@@ -33,9 +38,7 @@ def sideloader_provide(session, response):
 
         if os.path.isfile(path):
             log.debug({"event": "sideloader/provide", "path": path})
-
-            with open(path, "rb") as file:
-                op["content"] = base64.b64encode(file.read()).decode("utf-8")
+            op["content"] = b64encode_file(path)
         else:
             op["content"] = ""
 

@@ -98,7 +98,7 @@ class ViewTestCase(TestCase):
             raise AssertionError(f"'{a}' does not contain '{b()}'")
 
 
-class TestRepl():
+class Repl():
     def __init__(self, window, host, port):
         client = Client(host, port).go()
 
@@ -128,10 +128,12 @@ class TestRepl():
 
 
 class ReplTestCase(ViewTestCase):
+    def start_repl(self):
+        return Repl(self.view.window(), self.server.host, self.server.port)
+
     def setUp(self):
         super().setUp()
         self.server = mock.Server()
-        self.repl = TestRepl(self.view.window(), self.server.host, self.server.port)
 
     def tearDown(self):
         self.server.shutdown()

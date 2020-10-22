@@ -65,13 +65,14 @@ def format_loop(recvq, printq, tapq):
             else:
                 printable = format(response)
 
-                if "status" in response and "done" in response["status"]:
+                if response.get("status") == ["done"]:
                     if printable:
                         printable += "\n"
                     else:
                         printable = "\n"
 
-                printq.put({"printable": printable, "response": response})
+                if printable:
+                    printq.put({"printable": printable, "response": response})
     finally:
         printq.put(None)
         tapq.put(None)

@@ -163,8 +163,8 @@ class TutkainEvaluateFormCommand(TextCommand):
         elif inline_result and "value" in response:
             inline.clear(self.view)
             inline.show(self.view, region.end(), response["value"])
-
-        session.output(response)
+        else:
+            session.output(response)
 
     def get_eval_region(self, region, scope="outermost", ignore={}):
         assert scope in {"innermost", "outermost"}

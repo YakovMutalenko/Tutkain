@@ -15,6 +15,8 @@ def select_keys(d, ks):
 
 class TestBabashka(ReplTestCase):
     def handshake(self):
+        repl = self.start_repl()
+
         # Client sends describe op
         msg = self.server.recv()
         self.assertEquals({"op", "id"}, msg.keys())
@@ -73,13 +75,13 @@ class TestBabashka(ReplTestCase):
         )
 
         self.assertEquals(
-            "Babashka 0.2.2\nbabashka.nrepl 0.0.4-SNAPSHOT\n", self.repl.take_print()
+            "Babashka 0.2.2\nbabashka.nrepl 0.0.4-SNAPSHOT\n", repl.take_print()
         )
 
-        return plugin_session_id, user_session_id
+        return repl, plugin_session_id, user_session_id
 
     def test_eval(self):
-        plugin_session_id, user_session_id = self.handshake()
+        repl, plugin_session_id, user_session_id = self.handshake()
 
         # Client evaluates (inc 1)
         self.set_view_content("(inc 1)")
@@ -118,15 +120,15 @@ class TestBabashka(ReplTestCase):
             }
         )
 
-        self.assertEquals("user=> (inc 1)\n", self.repl.take_print())
-        self.assertEquals("2", self.repl.take_print())
-        # The eval response includes one empty reply.
-        self.repl.take_print()
-        self.assertEquals("\n", self.repl.take_print())
+        self.assertEquals("user=> (inc 1)\n", repl.take_print())
+        self.assertEquals("2", repl.take_print())
+        self.assertEquals("\n", repl.take_print())
 
 
 class TestArcadia(ReplTestCase):
     def handshake(self):
+        repl = self.start_repl()
+
         # Client sends describe op
         msg = self.server.recv()
         self.assertEquals({"op", "id"}, msg.keys())
@@ -190,12 +192,12 @@ class TestArcadia(ReplTestCase):
             }
         )
 
-        self.assertEquals("Clojure 1.10.0\nnREPL 0.2.3\n", self.repl.take_print())
+        self.assertEquals("Clojure 1.10.0\nnREPL 0.2.3\n", repl.take_print())
 
-        return plugin_session_id, user_session_id
+        return repl, plugin_session_id, user_session_id
 
     def test_eval(self):
-        plugin_session_id, user_session_id = self.handshake()
+        repl, plugin_session_id, user_session_id = self.handshake()
 
         # Client evaluates (inc 1)
         self.set_view_content("(inc 1)")
@@ -235,15 +237,15 @@ class TestArcadia(ReplTestCase):
             }
         )
 
-        self.assertEquals("user=> (inc 1)\n", self.repl.take_print())
-        self.assertEquals("2", self.repl.take_print())
-        # The eval response includes one empty reply.
-        self.repl.take_print()
-        self.assertEquals("\n", self.repl.take_print())
+        self.assertEquals("user=> (inc 1)\n", repl.take_print())
+        self.assertEquals("2", repl.take_print())
+        self.assertEquals("\n", repl.take_print())
 
 
-class TestNetworkRepl(ReplTestCase):
+class TestDefault(ReplTestCase):
     def test_sideloading_handshake(self):
+        repl = self.start_repl()
+
         # Client sends describe op.
         msg = self.server.recv()
         self.assertEquals({"op", "id"}, msg.keys())
@@ -591,11 +593,11 @@ class TestNetworkRepl(ReplTestCase):
             }
         )
 
-        self.assertEquals("Clojure 1.10.1\nnREPL 0.8.3\n", self.repl.take_print())
-
-        return plugin_session_id, user_session_id
+        self.assertEquals("Clojure 1.10.1\nnREPL 0.8.3\n", repl.take_print())
 
     def handshake(self):
+        repl = self.start_repl()
+
         # Client sends describe op.
         msg = self.server.recv()
         self.assertEquals({"op", "id"}, msg.keys())
@@ -773,12 +775,12 @@ class TestNetworkRepl(ReplTestCase):
             }
         )
 
-        self.assertEquals("Clojure 1.10.1\nnREPL 0.8.3\n", self.repl.take_print())
+        self.assertEquals("Clojure 1.10.1\nnREPL 0.8.3\n", repl.take_print())
 
-        return plugin_session_id, user_session_id
+        return repl, plugin_session_id, user_session_id
 
     def test_evaluate_form(self):
-        plugin_session_id, user_session_id = self.handshake()
+        repl, plugin_session_id, user_session_id = self.handshake()
 
         # Client evaluates (inc 1)
         self.set_view_content("(inc 1)")
@@ -817,13 +819,12 @@ class TestNetworkRepl(ReplTestCase):
             }
         )
 
-        self.assertEquals("user=> (inc 1)\n", self.repl.take_print())
-        self.assertEquals("2", self.repl.take_print())
-        self.assertEquals(None, self.repl.take_print())
-        self.assertEquals("\n", self.repl.take_print())
+        self.assertEquals("user=> (inc 1)\n", repl.take_print())
+        self.assertEquals("2", repl.take_print())
+        self.assertEquals("\n", repl.take_print())
 
     def test_evaluate_view(self):
-        plugin_session_id, user_session_id = self.handshake()
+        repl, plugin_session_id, user_session_id = self.handshake()
 
         self.set_view_content(
             "(ns app.core) (defn square [x] (* x x)) (comment (square 2))"
@@ -858,11 +859,11 @@ class TestNetworkRepl(ReplTestCase):
             }
         )
 
-        self.assertEquals(":tutkain/loaded", self.repl.take_print())
-        self.assertEquals("\n", self.repl.take_print())
+        self.assertEquals(":tutkain/loaded", repl.take_print())
+        self.assertEquals("\n", repl.take_print())
 
     def test_evaluate_form_before_view(self):
-        plugin_session_id, user_session_id = self.handshake()
+        repl, plugin_session_id, user_session_id = self.handshake()
 
         self.set_view_content(
             cleandoc(
@@ -901,6 +902,8 @@ class TestNetworkRepl(ReplTestCase):
             }
         )
 
+        # This is an nREPL bug: it sends to "done" responses when it can't find the namespace the
+        # user sends.
         self.server.send(
             {
                 "id": 1,
@@ -942,11 +945,9 @@ class TestNetworkRepl(ReplTestCase):
         self.assertEquals(
             [
                 "my.ns=> (defn x [y z] (set/subset? y z))\n",
-                "\n",  # ?
-                "\n",  # ?
+                "\n",  # This is the extraneous "done" response.
                 "#'my.ns/x",
-                None,  # ?
                 "\n",
             ],
-            self.repl.take_prints(6),
+            repl.take_prints(4),
         )

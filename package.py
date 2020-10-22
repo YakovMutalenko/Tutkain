@@ -239,7 +239,7 @@ class TutkainEvaluateViewCommand(TextCommand):
 
     def run(self, edit):
         window = self.view.window()
-        session = state.get_session_by_owner(window, "user")
+        session = state.get_session_by_owner(window, "plugin")
 
         if session is None:
             window.status_message("ERR: Not connected to a REPL.")

@@ -59,8 +59,11 @@ class ViewTestCase(TestCase):
     def setUp(self):
         self.clear_view()
 
+    def content(self, view):
+        return view and view.substr(sublime.Region(0, view.size()))
+
     def view_content(self):
-        return self.view.substr(sublime.Region(0, self.view.size()))
+        return self.content(self.view)
 
     def clear_view(self):
         self.view.run_command("select_all")
@@ -95,28 +98,47 @@ class ViewTestCase(TestCase):
             raise AssertionError(f"'{a}' does not contain '{b()}'")
 
 
+class TestRepl():
+    def __init__(self, window, host, port):
+        client = Client(host, port).go()
+
+        self.printq = queue.Queue()
+        self.tapq = queue.Queue()
+
+        self.view = repl.views.create(window, client)
+
+        state.set_view_client(self.view, client)
+        state.set_active_repl_view(self.view)
+
+        repl.machinery.start(client, self.printq, self.tapq)
+
+    def take_print(self):
+        return self.printq.get(timeout=1)["printable"]
+
+    def take_prints(self, n):
+        xs = []
+
+        for _ in range(n):
+            xs.append(self.take_print())
+
+        return xs
+
+    def take_tap(self):
+        return self.tapq.get(timeout=1)
+
+
 class ReplTestCase(ViewTestCase):
-    @classmethod
-    def setUpClass(self):
-        super().setUpClass()
+    def setUp(self):
+        super().setUp()
+        self.server = mock.Server()
+        self.repl = TestRepl(self.view.window(), self.server.host, self.server.port)
 
-        self.srv = mock.Server()
-        client = Client(self.srv.host, self.srv.port).go()
-
-        printq = queue.Queue()
-        tapq = queue.Queue()
-
-        view = repl.views.create(self.view.window(), client)
-        state.set_view_client(view, client)
-        state.set_active_repl_view(view)
-
-        repl.machinery.start(client, printq, tapq)
-
-        self.take_print = lambda self: printq.get(timeout=1)["printable"]
-        self.take_tap = lambda self: tapq.get(timeout=1)
-
-    @classmethod
-    def tearDownClass(self):
-        self.srv.shutdown()
+    def tearDown(self):
+        self.server.shutdown()
         self.view.window().run_command("tutkain_disconnect")
-        super().tearDownClass()
+        super().tearDown()
+
+    def send_eval_responses(self, session_id, id, ns, value):
+        self.server.send({"id": id, "session": session_id, "value": value})
+        self.server.send({"id": id, "ns": ns, "session": session_id})
+        self.server.send({"id": id, "session": session_id, "status": ["done"]})

@@ -1,6 +1,7 @@
 import sublime
 import uuid
 
+from inspect import cleandoc
 from .util import ReplTestCase
 from Tutkain.src.repl.machinery import b64encode_file
 
@@ -15,12 +16,12 @@ def select_keys(d, ks):
 class TestBabashka(ReplTestCase):
     def handshake(self):
         # Client sends describe op
-        msg = self.srv.recv()
+        msg = self.server.recv()
         self.assertEquals({"op", "id"}, msg.keys())
         self.assertEquals("describe", msg["op"])
 
         # Server sends describe reply
-        self.srv.send(
+        self.server.send(
             {
                 "id": msg["id"],
                 "ops": {
@@ -40,13 +41,13 @@ class TestBabashka(ReplTestCase):
         )
 
         # Client initializes plugin session
-        msg = self.srv.recv()
+        msg = self.server.recv()
         self.assertEquals({"op", "id"}, msg.keys())
         self.assertEquals("clone", msg["op"])
 
         plugin_session_id = str(uuid.uuid4())
 
-        self.srv.send(
+        self.server.send(
             {
                 "id": msg["id"],
                 "new-session": plugin_session_id,
@@ -56,13 +57,13 @@ class TestBabashka(ReplTestCase):
         )
 
         # Client initializes user session
-        msg = self.srv.recv()
+        msg = self.server.recv()
         self.assertEquals({"op", "id"}, msg.keys())
         self.assertEquals("clone", msg["op"])
 
         user_session_id = str(uuid.uuid4())
 
-        self.srv.send(
+        self.server.send(
             {
                 "id": msg["id"],
                 "new-session": user_session_id,
@@ -72,7 +73,7 @@ class TestBabashka(ReplTestCase):
         )
 
         self.assertEquals(
-            "Babashka 0.2.2\nbabashka.nrepl 0.0.4-SNAPSHOT\n", self.take_print()
+            "Babashka 0.2.2\nbabashka.nrepl 0.0.4-SNAPSHOT\n", self.repl.take_print()
         )
 
         return plugin_session_id, user_session_id
@@ -94,47 +95,45 @@ class TestBabashka(ReplTestCase):
                 "session": user_session_id,
                 "id": 1,
             },
-            select_keys(self.srv.recv(), {"op", "code", "ns", "session", "id"}),
+            select_keys(self.server.recv(), {"op", "code", "ns", "session", "id"}),
         )
 
         # Server sends eval responses
-        # self.srv.send(
-        #     {
-        #         "id": 1,
-        #         "ns": "user",
-        #         "session": user_session_id,
-        #         "value": "2",
-        #     }
-        # )
+        self.server.send(
+            {
+                "id": 1,
+                "ns": "user",
+                "session": user_session_id,
+                "value": "2",
+            }
+        )
 
-        # self.srv.send(
-        #     {"id": 1, "ns": "user", "session": user_session_id}
-        # )
+        self.server.send({"id": 1, "ns": "user", "session": user_session_id})
 
-        # self.srv.send(
-        #     {
-        #         "id": 1,
-        #         "session": user_session_id,
-        #         "status": ["done"],
-        #     }
-        # )
+        self.server.send(
+            {
+                "id": 1,
+                "session": user_session_id,
+                "status": ["done"],
+            }
+        )
 
-        # self.assertEquals("user=> (inc 1)\n", self.take_print())
-        # self.assertEquals("2", self.take_print())
-        # # The eval response includes one empty reply.
-        # self.take_print()
-        # self.assertEquals("\n", self.take_print())
+        self.assertEquals("user=> (inc 1)\n", self.repl.take_print())
+        self.assertEquals("2", self.repl.take_print())
+        # The eval response includes one empty reply.
+        self.repl.take_print()
+        self.assertEquals("\n", self.repl.take_print())
 
 
 class TestArcadia(ReplTestCase):
     def handshake(self):
         # Client sends describe op
-        msg = self.srv.recv()
+        msg = self.server.recv()
         self.assertEquals({"op", "id"}, msg.keys())
         self.assertEquals("describe", msg["op"])
 
         # Server sends describe reply
-        self.srv.send(
+        self.server.send(
             {
                 "id": msg["id"],
                 "ops": {
@@ -147,7 +146,7 @@ class TestArcadia(ReplTestCase):
                     "info": 1,
                     "load-file": 1,
                 },
-                "session": "3a98c8e8-dc39-417d-9606-b8fa1ca17130",
+                "session": str(uuid.uuid4()),
                 "status": ["done"],
                 "versions": {
                     "clojure": {
@@ -162,13 +161,13 @@ class TestArcadia(ReplTestCase):
         )
 
         # Client initializes plugin session
-        msg = self.srv.recv()
+        msg = self.server.recv()
         self.assertEquals({"op", "id"}, msg.keys())
         self.assertEquals("clone", msg["op"])
 
         plugin_session_id = str(uuid.uuid4())
 
-        self.srv.send(
+        self.server.send(
             {
                 "id": msg["id"],
                 "new-session": plugin_session_id,
@@ -177,13 +176,13 @@ class TestArcadia(ReplTestCase):
         )
 
         # Client initializes user session
-        msg = self.srv.recv()
+        msg = self.server.recv()
         self.assertEquals({"op", "id"}, msg.keys())
         self.assertEquals("clone", msg["op"])
 
         user_session_id = str(uuid.uuid4())
 
-        self.srv.send(
+        self.server.send(
             {
                 "id": msg["id"],
                 "new-session": user_session_id,
@@ -191,7 +190,7 @@ class TestArcadia(ReplTestCase):
             }
         )
 
-        self.assertEquals("Clojure 1.10.0\nnREPL 0.2.3\n", self.take_print())
+        self.assertEquals("Clojure 1.10.0\nnREPL 0.2.3\n", self.repl.take_print())
 
         return plugin_session_id, user_session_id
 
@@ -212,48 +211,46 @@ class TestArcadia(ReplTestCase):
                 "session": user_session_id,
                 "id": 1,
             },
-            select_keys(self.srv.recv(), {"op", "code", "ns", "session", "id"}),
+            select_keys(self.server.recv(), {"op", "code", "ns", "session", "id"}),
         )
 
         # Server sends eval responses
-        self.srv.send(
+        self.server.send(
             {
                 "id": 1,
                 "ns": "user",
-                "session": "a215e204-7c1e-479b-b86d-38ac7845f12c",
+                "session": user_session_id,
                 "value": "2",
             }
         )
 
         # Not sure why Babashka sends this empty response
-        self.srv.send(
-            {"id": 1, "ns": "user", "session": "a215e204-7c1e-479b-b86d-38ac7845f12c"}
-        )
+        self.server.send({"id": 1, "ns": "user", "session": user_session_id})
 
-        self.srv.send(
+        self.server.send(
             {
                 "id": 1,
-                "session": "a215e204-7c1e-479b-b86d-38ac7845f12c",
+                "session": user_session_id,
                 "status": ["done"],
             }
         )
 
-        self.assertEquals("user=> (inc 1)\n", self.take_print())
-        self.assertEquals("2", self.take_print())
+        self.assertEquals("user=> (inc 1)\n", self.repl.take_print())
+        self.assertEquals("2", self.repl.take_print())
         # The eval response includes one empty reply.
-        self.take_print()
-        self.assertEquals("\n", self.take_print())
+        self.repl.take_print()
+        self.assertEquals("\n", self.repl.take_print())
 
 
 class TestNetworkRepl(ReplTestCase):
-    def handshake(self):
+    def test_sideloading_handshake(self):
         # Client sends describe op.
-        msg = self.srv.recv()
+        msg = self.server.recv()
         self.assertEquals({"op", "id"}, msg.keys())
         self.assertEquals("describe", msg["op"])
 
         # Server sends describe reply.
-        self.srv.send(
+        self.server.send(
             {
                 "aux": {"current-ns": "user"},
                 "id": msg["id"],
@@ -274,7 +271,7 @@ class TestNetworkRepl(ReplTestCase):
                     "stdin": {},
                     "swap-middleware": {},
                 },
-                "session": "7284b9a2-ce3d-4a59-8497-8f051cb999d8",
+                "session": str(uuid.uuid4()),
                 "status": ["done"],
                 "versions": {
                     "clojure": {
@@ -300,13 +297,13 @@ class TestNetworkRepl(ReplTestCase):
         )
 
         # Client initializes sideloader session.
-        msg = self.srv.recv()
+        msg = self.server.recv()
         self.assertEquals({"op", "id"}, msg.keys())
         self.assertEquals("clone", msg["op"])
 
         sideloader_session_id = str(uuid.uuid4())
 
-        self.srv.send(
+        self.server.send(
             {
                 "id": msg["id"],
                 "new-session": sideloader_session_id,
@@ -321,7 +318,7 @@ class TestNetworkRepl(ReplTestCase):
                 "op": "sideloader-start",
                 "session": sideloader_session_id,
             },
-            self.srv.recv(),
+            self.server.recv(),
         )
 
         # Client requires pprint namespace.
@@ -332,11 +329,11 @@ class TestNetworkRepl(ReplTestCase):
                 "code": "(require 'tutkain.nrepl.util.pprint)",
                 "session": sideloader_session_id,
             },
-            select_keys(self.srv.recv(), {"op", "id", "code", "session"}),
+            select_keys(self.server.recv(), {"op", "id", "code", "session"}),
         )
 
         # Server can't find the pprint namespace, requests it from the client.
-        self.srv.send(
+        self.server.send(
             {
                 "id": 1,
                 "name": "tutkain/nrepl/util/pprint__init.class",
@@ -356,11 +353,11 @@ class TestNetworkRepl(ReplTestCase):
                 "content": "",
                 "session": sideloader_session_id,
             },
-            self.srv.recv(),
+            self.server.recv(),
         )
 
         # Server acknowledges the empty response.
-        self.srv.send(
+        self.server.send(
             {
                 "id": 3,
                 "session": sideloader_session_id,
@@ -369,7 +366,7 @@ class TestNetworkRepl(ReplTestCase):
         )
 
         # Server requests a .clj file.
-        self.srv.send(
+        self.server.send(
             {
                 "id": 1,
                 "name": "tutkain/nrepl/util/pprint.clj",
@@ -391,11 +388,11 @@ class TestNetworkRepl(ReplTestCase):
                 ),
                 "session": sideloader_session_id,
             },
-            self.srv.recv(),
+            self.server.recv(),
         )
 
         # Server acknoledges the provide.
-        self.srv.send(
+        self.server.send(
             {
                 "id": 4,
                 "session": sideloader_session_id,
@@ -406,9 +403,11 @@ class TestNetworkRepl(ReplTestCase):
         # The request that required the pprint namespace is done.
         #
         # We'll ignore sideloading Fipp here.
-        self.srv.send({"id": 2, "session": sideloader_session_id, "value": "nil"})
-        self.srv.send({"id": 2, "ns": "user", "session": sideloader_session_id})
-        self.srv.send({"id": 2, "session": sideloader_session_id, "status": ["done"]})
+        self.server.send({"id": 2, "session": sideloader_session_id, "value": "nil"})
+        self.server.send({"id": 2, "ns": "user", "session": sideloader_session_id})
+        self.server.send(
+            {"id": 2, "session": sideloader_session_id, "status": ["done"]}
+        )
 
         # Client asks server to add middleware.
         self.assertEquals(
@@ -421,11 +420,11 @@ class TestNetworkRepl(ReplTestCase):
                 "session": sideloader_session_id,
                 "id": 5,
             },
-            self.srv.recv(),
+            self.server.recv(),
         )
 
         # Server doesn't have the middleware, asks the client for it.
-        self.srv.send(
+        self.server.send(
             {
                 "id": 1,
                 "name": "tutkain/nrepl/middleware/test__init.class",
@@ -445,11 +444,11 @@ class TestNetworkRepl(ReplTestCase):
                 "content": "",
                 "session": sideloader_session_id,
             },
-            self.srv.recv(),
+            self.server.recv(),
         )
 
         # Server asks the client for the .clj file.
-        self.srv.send(
+        self.server.send(
             {
                 "id": 1,
                 "name": "tutkain/nrepl/middleware/test.clj",
@@ -471,11 +470,11 @@ class TestNetworkRepl(ReplTestCase):
                 ),
                 "session": sideloader_session_id,
             },
-            self.srv.recv(),
+            self.server.recv(),
         )
 
         # Server acknoledges the provide.
-        self.srv.send(
+        self.server.send(
             {
                 "id": 7,
                 "session": sideloader_session_id,
@@ -484,7 +483,7 @@ class TestNetworkRepl(ReplTestCase):
         )
 
         # Server tells the client there's nothing more to sideload.
-        self.srv.send(
+        self.server.send(
             {
                 "id": 5,
                 "session": sideloader_session_id,
@@ -495,11 +494,11 @@ class TestNetworkRepl(ReplTestCase):
         # Client sends tutkain/add-tap.
         self.assertEquals(
             {"id": 8, "op": "tutkain/add-tap", "session": sideloader_session_id},
-            self.srv.recv(),
+            self.server.recv(),
         )
 
         # Server acknowledges the request.
-        self.srv.send(
+        self.server.send(
             {
                 "id": 8,
                 "session": sideloader_session_id,
@@ -509,14 +508,12 @@ class TestNetworkRepl(ReplTestCase):
 
         self.assertEquals(
             {"id": 9, "op": "describe", "session": sideloader_session_id},
-            self.srv.recv(),
+            self.server.recv(),
         )
 
-        self.srv.send(
+        self.server.send(
             {
-                "aux": {
-                    "current-ns": "user"
-                },
+                "aux": {"current-ns": "user"},
                 "id": 9,
                 "ops": {
                     "add-middleware": {},
@@ -563,13 +560,13 @@ class TestNetworkRepl(ReplTestCase):
         )
 
         # Clone plugin session
-        msg = self.srv.recv()
+        msg = self.server.recv()
         self.assertEquals({"op", "session", "id"}, msg.keys())
         self.assertEquals("clone", msg["op"])
 
         plugin_session_id = str(uuid.uuid4())
 
-        self.srv.send(
+        self.server.send(
             {
                 "id": msg["id"],
                 "new-session": plugin_session_id,
@@ -579,13 +576,13 @@ class TestNetworkRepl(ReplTestCase):
         )
 
         # Clone user session
-        msg = self.srv.recv()
+        msg = self.server.recv()
         self.assertEquals({"op", "session", "id"}, msg.keys())
         self.assertEquals("clone", msg["op"])
 
         user_session_id = str(uuid.uuid4())
 
-        self.srv.send(
+        self.server.send(
             {
                 "id": msg["id"],
                 "new-session": user_session_id,
@@ -594,11 +591,193 @@ class TestNetworkRepl(ReplTestCase):
             }
         )
 
-        self.assertEquals("Clojure 1.10.1\nnREPL 0.8.3\n", self.take_print())
+        self.assertEquals("Clojure 1.10.1\nnREPL 0.8.3\n", self.repl.take_print())
 
         return plugin_session_id, user_session_id
 
-    def test_eval(self):
+    def handshake(self):
+        # Client sends describe op.
+        msg = self.server.recv()
+        self.assertEquals({"op", "id"}, msg.keys())
+        self.assertEquals("describe", msg["op"])
+
+        describe = {
+            "aux": {"current-ns": "user"},
+            "id": msg["id"],
+            "ops": {
+                "add-middleware": {},
+                "clone": {},
+                "close": {},
+                "completions": {},
+                "describe": {},
+                "eval": {},
+                "interrupt": {},
+                "load-file": {},
+                "lookup": {},
+                "ls-middleware": {},
+                "ls-sessions": {},
+                "sideloader-provide": {},
+                "sideloader-start": {},
+                "stdin": {},
+                "swap-middleware": {},
+                "tutkain/add-tap": {},
+                "tutkain/test": {},
+            },
+            "session": str(uuid.uuid4()),
+            "status": ["done"],
+            "versions": {
+                "clojure": {
+                    "incremental": 1,
+                    "major": 1,
+                    "minor": 10,
+                    "version-string": "1.10.1",
+                },
+                "java": {
+                    "incremental": "2",
+                    "major": "11",
+                    "minor": "0",
+                    "version-string": "11.0.2",
+                },
+                "nrepl": {
+                    "incremental": 3,
+                    "major": 0,
+                    "minor": 8,
+                    "version-string": "0.8.3",
+                },
+            },
+        }
+
+        # Server responds, telling the client everything is already sideloaded.
+        self.server.send(describe)
+
+        # Clone plugin session
+        msg = self.server.recv()
+        self.assertEquals({"op", "id"}, msg.keys())
+        self.assertEquals("clone", msg["op"])
+
+        sideloader_session_id = str(uuid.uuid4())
+
+        self.server.send(
+            {
+                "id": msg["id"],
+                "new-session": sideloader_session_id,
+                "session": str(uuid.uuid4()),
+                "status": ["done"],
+            }
+        )
+
+        # Client sends sideloader-start.
+        self.assertEquals(
+            {
+                "id": 1,
+                "op": "sideloader-start",
+                "session": sideloader_session_id,
+            },
+            self.server.recv(),
+        )
+
+        # Client requires pprint namespace.
+        self.assertEquals(
+            {
+                "op": "eval",
+                "id": 2,
+                "code": "(require 'tutkain.nrepl.util.pprint)",
+                "session": sideloader_session_id,
+            },
+            select_keys(self.server.recv(), {"op", "id", "code", "session"}),
+        )
+
+        self.send_eval_responses(sideloader_session_id, 2, "user", "nil")
+
+        # Client asks server to add middleware.
+        self.assertEquals(
+            {
+                "op": "add-middleware",
+                "middleware": [
+                    "tutkain.nrepl.middleware.test/wrap-test",
+                    "tutkain.nrepl.middleware.tap/wrap-tap",
+                ],
+                "session": sideloader_session_id,
+                "id": 3,
+            },
+            self.server.recv(),
+        )
+
+        self.server.send(
+            {
+                "id": 3,
+                "session": sideloader_session_id,
+                "status": ["done"],
+            }
+        )
+
+        self.assertEquals(
+            {
+                "op": "tutkain/add-tap",
+                "session": sideloader_session_id,
+                "id": 4,
+            },
+            self.server.recv(),
+        )
+
+        self.server.send(
+            {
+                "id": 4,
+                "session": sideloader_session_id,
+                "status": ["done"],
+            }
+        )
+
+        self.assertEquals(
+            {
+                "op": "describe",
+                "session": sideloader_session_id,
+                "id": 5,
+            },
+            self.server.recv(),
+        )
+
+        describe["id"] = 5
+        describe["session"] = sideloader_session_id
+        self.server.send(describe)
+
+        # Clone plugin session
+        msg = self.server.recv()
+        self.assertEquals({"op", "session", "id"}, msg.keys())
+        self.assertEquals("clone", msg["op"])
+
+        plugin_session_id = str(uuid.uuid4())
+
+        self.server.send(
+            {
+                "id": msg["id"],
+                "new-session": plugin_session_id,
+                "session": sideloader_session_id,
+                "status": ["done"],
+            }
+        )
+
+        # Clone user session
+        msg = self.server.recv()
+        self.assertEquals({"op", "session", "id"}, msg.keys())
+        self.assertEquals("clone", msg["op"])
+
+        user_session_id = str(uuid.uuid4())
+
+        self.server.send(
+            {
+                "id": msg["id"],
+                "new-session": user_session_id,
+                "session": sideloader_session_id,
+                "status": ["done"],
+            }
+        )
+
+        self.assertEquals("Clojure 1.10.1\nnREPL 0.8.3\n", self.repl.take_print())
+
+        return plugin_session_id, user_session_id
+
+    def test_evaluate_form(self):
         plugin_session_id, user_session_id = self.handshake()
 
         # Client evaluates (inc 1)
@@ -615,11 +794,11 @@ class TestNetworkRepl(ReplTestCase):
                 "session": user_session_id,
                 "id": 1,
             },
-            select_keys(self.srv.recv(), {"op", "code", "ns", "session", "id"}),
+            select_keys(self.server.recv(), {"op", "code", "ns", "session", "id"}),
         )
 
         # Server sends eval responses
-        self.srv.send(
+        self.server.send(
             {
                 "id": 1,
                 "ns": "user",
@@ -628,19 +807,146 @@ class TestNetworkRepl(ReplTestCase):
             }
         )
 
-        self.srv.send(
-            {"id": 1, "ns": "user", "session": "a215e204-7c1e-479b-b86d-38ac7845f12c"}
-        )
+        self.server.send({"id": 1, "ns": "user", "session": user_session_id})
 
-        self.srv.send(
+        self.server.send(
             {
                 "id": 1,
-                "session": "a215e204-7c1e-479b-b86d-38ac7845f12c",
+                "session": user_session_id,
                 "status": ["done"],
             }
         )
 
-        self.assertEquals("user=> (inc 1)\n", self.take_print())
-        self.assertEquals("2", self.take_print())
-        self.assertEquals(None, self.take_print())
-        self.assertEquals("\n", self.take_print())
+        self.assertEquals("user=> (inc 1)\n", self.repl.take_print())
+        self.assertEquals("2", self.repl.take_print())
+        self.assertEquals(None, self.repl.take_print())
+        self.assertEquals("\n", self.repl.take_print())
+
+    def test_evaluate_view(self):
+        plugin_session_id, user_session_id = self.handshake()
+
+        self.set_view_content(
+            "(ns app.core) (defn square [x] (* x x)) (comment (square 2))"
+        )
+
+        self.view.run_command("tutkain_evaluate_view")
+
+        self.assertEquals(
+            {
+                "op": "load-file",
+                "file": "(ns app.core) (defn square [x] (* x x)) (comment (square 2))",
+                "session": plugin_session_id,
+                "id": 1,
+            },
+            self.server.recv(),
+        )
+
+        self.server.send(
+            {
+                "id": 1,
+                "ns": "user",
+                "session": plugin_session_id,
+                "value": "nil",
+            }
+        )
+
+        self.server.send(
+            {
+                "id": 1,
+                "session": plugin_session_id,
+                "status": ["done"],
+            }
+        )
+
+        self.assertEquals(":tutkain/loaded", self.repl.take_print())
+        self.assertEquals("\n", self.repl.take_print())
+
+    def test_evaluate_form_before_view(self):
+        plugin_session_id, user_session_id = self.handshake()
+
+        self.set_view_content(
+            cleandoc(
+                """
+            (ns my.ns (:require [clojure.set :as set]))
+
+            (defn x [y z] (set/subset? y z))
+
+            (comment
+              (x #{1} #{1 2}))
+            """
+            )
+        )
+
+        self.set_selections((45, 45))
+        self.view.run_command("tutkain_evaluate_form")
+
+        self.assertEquals(
+            {
+                "op": "eval",
+                "code": "(defn x [y z] (set/subset? y z))",
+                "ns": "my.ns",
+                "session": user_session_id,
+                "id": 1,
+            },
+            select_keys(self.server.recv(), {"op", "code", "ns", "session", "id"}),
+        )
+
+        # Server can't find namespace.
+        self.server.send(
+            {
+                "id": 1,
+                "ns": "my.ns",
+                "session": user_session_id,
+                "status": ["namespace-not-found", "done", "error"],
+            }
+        )
+
+        self.server.send(
+            {
+                "id": 1,
+                "ns": "my.ns",
+                "session": user_session_id,
+                "status": ["done"],
+            }
+        )
+
+        # Client evaluates ns form.
+        self.assertEquals(
+            {
+                "op": "eval",
+                "code": "(ns my.ns (:require [clojure.set :as set]))",
+                "session": user_session_id,
+                "id": 2,
+            },
+            select_keys(self.server.recv(), {"op", "code", "session", "id"}),
+        )
+
+        self.server.send({"id": 2, "session": user_session_id, "value": "nil"})
+        self.server.send({"id": 2, "ns": "my.ns", "session": user_session_id})
+        self.server.send({"id": 2, "session": user_session_id, "status": ["done"]})
+
+        # Client retries sending the original form.
+        self.assertEquals(
+            {
+                "op": "eval",
+                "code": "(defn x [y z] (set/subset? y z))",
+                "ns": "my.ns",
+                "session": user_session_id,
+                "id": 3,
+            },
+            select_keys(self.server.recv(), {"op", "code", "ns", "session", "id"}),
+        )
+
+        self.send_eval_responses(user_session_id, 3, "my.ns", "#'my.ns/x\n")
+
+        self.assertEquals(
+            [
+                "my.ns=> (defn x [y z] (set/subset? y z))\n",
+                "\n",  # ?
+                "\n",  # ?
+                "#'my.ns/x",
+                None,  # ?
+                "\n",
+            ],
+            self.repl.take_prints(6),
+        )

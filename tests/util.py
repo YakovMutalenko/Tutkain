@@ -110,7 +110,7 @@ class Repl():
         state.set_view_client(self.view, client)
         state.set_active_repl_view(self.view)
 
-        repl.machinery.start(client, self.printq, self.tapq)
+        repl.start(client, self.printq, self.tapq)
 
     def take_print(self):
         return self.printq.get(timeout=1)["printable"]

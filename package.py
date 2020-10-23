@@ -24,7 +24,7 @@ from .src import inline
 from .src import paredit
 from .src import namespace
 from .src import test
-from .src.repl import machinery
+from .src import repl
 from .src.repl import info
 from .src.repl import history
 from .src.repl import tap
@@ -445,7 +445,7 @@ class TutkainConnectCommand(WindowCommand):
                 self.tap_loop.name = "tutkain.connection.tap_loop"
                 self.tap_loop.start()
 
-            machinery.start(client, printq, tapq)
+            repl.start(client, printq, tapq)
         except ConnectionRefusedError:
             self.window.status_message(f"ERR: connection to {host}:{port} refused.")
 

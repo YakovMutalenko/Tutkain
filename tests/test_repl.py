@@ -3,7 +3,7 @@ import uuid
 
 from inspect import cleandoc
 from .util import ReplTestCase
-from Tutkain.src.repl.machinery import b64encode_file
+from Tutkain.src.repl import b64encode_file
 
 
 ROOT = sublime.packages_path()
